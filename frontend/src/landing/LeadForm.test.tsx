@@ -125,7 +125,34 @@ describe('Lead intake confirmation', () => {
     render(<LeadForm />);
     fillForm();
     fireEvent.click(screen.getByRole('button', { name: /Обсудить подключение/ }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Подождите минуту');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Дождитесь окончания паузы');
     expect(screen.queryByText(/Заявка принята/)).not.toBeInTheDocument();
+  });
+
+  it('blocks simultaneous submit events before React updates the busy state', async () => {
+    let resolveRequest!: (response: Response) => void;
+    const fetchSpy = vi.fn(() => new Promise<Response>(resolve => { resolveRequest = resolve; }));
+    vi.stubGlobal('fetch', fetchSpy);
+    render(<LeadForm />);
+    fillForm();
+    const form = screen.getByRole('button', { name: /Обсудить подключение/ }).closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    resolveRequest(new Response(JSON.stringify({ accepted: true, requestId: 'single-submit' })));
+    await screen.findByRole('status');
+  });
+
+  it('honors HTTP 429 cooldown even when the visitor changes fields', async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '12' } }));
+    vi.stubGlobal('fetch', fetchSpy);
+    render(<LeadForm />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /Обсудить подключение/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Слишком много запросов');
+    expect(screen.getByRole('button', { name: 'Повторить через 12 с' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Город'), { target: { value: 'Астана' } });
+    fireEvent.submit(screen.getByRole('button', { name: /Повторить через/ }).closest('form')!);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

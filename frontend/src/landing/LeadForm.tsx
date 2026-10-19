@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowUpRight, CheckCircle2, Download, LoaderCircle } from 'lucide-react';
 
 type Lead = { name: string; contact: string; city: string; registers: number; equipment: string };
@@ -10,6 +10,22 @@ export function LeadForm() {
   const [receipt, setReceipt] = useState('');
   const [downloaded, setDownloaded] = useState(false);
   const pending = useRef<{ body: string; requestId: string } | null>(null);
+  const inFlight = useRef(false);
+  const blockedUntil = useRef(0);
+  const [retryAfter, setRetryAfter] = useState(0);
+
+  useEffect(() => {
+    if (!retryAfter) return;
+    const timer = window.setInterval(() => setRetryAfter(Math.max(0, Math.ceil((blockedUntil.current - Date.now()) / 1000))), 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAfter]);
+
+  function pauseRequests(value: unknown, fallback = 60) {
+    const seconds = Number(value);
+    const delay = Number.isFinite(seconds) && seconds > 0 ? Math.min(3600, Math.ceil(seconds)) : fallback;
+    blockedUntil.current = Date.now() + delay * 1000;
+    setRetryAfter(delay);
+  }
 
   function readLead(form: HTMLFormElement): Lead | null {
     const data = new FormData(form);
@@ -30,6 +46,7 @@ export function LeadForm() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current || Date.now() < blockedUntil.current) return;
     setError('');
     setReceipt('');
     const lead = readLead(event.currentTarget);
@@ -46,22 +63,31 @@ export function LeadForm() {
     if (pending.current?.body !== body) pending.current = { body, requestId: crypto.randomUUID() };
     const requestId = pending.current.requestId;
     const googleScript = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(endpoint);
+    inFlight.current = true;
     setBusy(true);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), googleScript ? 30000 : 15000);
     try {
       const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': googleScript ? 'text/plain;charset=utf-8' : 'application/json' }, body: JSON.stringify({ ...payload, requestId }), credentials: 'omit', signal: controller.signal });
+      if (response.status === 429) {
+        pauseRequests(response.headers.get('Retry-After'));
+        throw new Error('Слишком много запросов. Дождитесь окончания паузы перед повторной отправкой.');
+      }
       if (!response.ok) throw new Error('Сервис не подтвердил приём заявки. Проверьте связь и попробуйте ещё раз.');
       const result: unknown = await response.json().catch(() => {
         throw new Error('Сервис вернул ответ без подтверждения приёма. Уточните статус заявки у команды перед повторной отправкой.');
       });
-      if (typeof result === 'object' && result !== null && 'code' in result && (result.code === 'RATE_LIMIT' || result.code === 'BUSY')) throw new Error('Сервис занят. Подождите минуту и повторите отправку.');
+      if (typeof result === 'object' && result !== null && 'code' in result && (result.code === 'RATE_LIMIT' || result.code === 'BUSY')) {
+        pauseRequests('retryAfter' in result ? result.retryAfter : undefined, result.code === 'BUSY' ? 3 : 60);
+        throw new Error('Сервис занят. Дождитесь окончания паузы и повторите отправку.');
+      }
       if (typeof result !== 'object' || result === null || !('accepted' in result) || result.accepted !== true || !('requestId' in result) || typeof result.requestId !== 'string' || !result.requestId.trim()) throw new Error('Подтверждение приёма не получено. Не отправляйте заявку повторно, пока не проверите её статус у команды.');
       setReceipt(result.requestId);
     } catch (requestError) {
       setError(requestError instanceof DOMException && requestError.name === 'AbortError' ? 'Время ожидания истекло. Подтверждение не получено; заявка могла дойти до сервиса. Уточните её статус перед повторной отправкой.' : requestError instanceof TypeError ? 'Нет подтверждения от сервиса. Проверьте соединение; если заявка могла дойти, уточните её статус перед повторной отправкой.' : requestError instanceof Error ? requestError.message : 'Не удалось отправить данные. Попробуйте позже.');
     } finally {
       window.clearTimeout(timeout);
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -97,7 +123,7 @@ export function LeadForm() {
     {!endpoint && <p className="sg-form-notice">Онлайн-приём заявок пока не подключён. Заполненную анкету можно скачать — данные останутся у вас.</p>}
     {error && <p id="sg-form-error" className="sg-form-error" role="alert">{error}</p>}
     {receipt && <p className="sg-form-success" role="status"><CheckCircle2 size={18} />Заявка принята. Номер: {receipt}</p>}
-    <button type="submit" className="sg-button sg-button-primary sg-form-submit" disabled={busy || Boolean(receipt)}>{busy ? <><LoaderCircle className="sg-spin" size={18} /> Отправляем…</> : receipt ? 'Заявка принята' : <>Обсудить подключение <ArrowUpRight size={19} /></>}</button>
+    <button type="submit" className="sg-button sg-button-primary sg-form-submit" disabled={busy || Boolean(receipt) || retryAfter > 0}>{busy ? <><LoaderCircle className="sg-spin" size={18} /> Отправляем…</> : receipt ? 'Заявка принята' : retryAfter > 0 ? `Повторить через ${retryAfter} с` : <>Обсудить подключение <ArrowUpRight size={19} /></>}</button>
     {!endpoint && <button className="sg-download" type="button" onClick={(event) => download(event.currentTarget.form!)}><Download size={16} /> Скачать заполненную анкету</button>}
     {downloaded && <p className="sg-download-status" role="status">Анкета подготовлена для скачивания. Данные никуда не отправлены.</p>}
   </form>;
