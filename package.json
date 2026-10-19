@@ -6,6 +6,7 @@
     "build": "npm --prefix frontend run build",
     "lint": "npm --prefix frontend run lint",
     "test": "npm --prefix frontend test",
+    "test:sheets": "node integrations/google-sheets/Code.test.mjs",
     "preview": "npm --prefix frontend run preview -- --host 127.0.0.1 --port 5175"
   }
 }

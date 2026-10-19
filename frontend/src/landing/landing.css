@@ -237,6 +237,8 @@ body { margin: 0; }
 .sg-form-heading h3 { font-size: 20px; }
 .sg-form-heading > span { font-size: 11px; color: var(--sg-muted); display: block; margin-top: 7px; }
 .sg-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 19px 16px; }
+.sg-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.sg-honeypot { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .sg-field { display: flex; flex-direction: column; gap: 8px; font-size: 11px; font-weight: 600; min-width: 0; }
 .sg-field > span { display: inline; color: #61738d; font-weight: 400; font-size: 9px; margin-top: -7px; }
 .sg-field input, .sg-field textarea { width: 100%; min-width: 0; border: 1px solid #dce4ee; background: #fbfcfe; border-radius: 10px; padding: 12px; font-size: 11px; color: #17263b; font-weight: 400; transition: border-color .2s, box-shadow .2s; }

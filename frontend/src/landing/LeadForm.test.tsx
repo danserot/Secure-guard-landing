@@ -88,4 +88,44 @@ describe('Lead intake confirmation', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Проверьте соединение');
     expect(screen.getByLabelText('Телефон или email')).toHaveValue('owner@example.test');
   });
+
+  it('uses a readable simple POST for Apps Script, with no Google account cookies', async () => {
+    vi.stubEnv('VITE_LEAD_ENDPOINT', 'https://script.google.com/macros/s/test-deployment/exec');
+    const fetchSpy = vi.fn().mockResolvedValue(new Response(JSON.stringify({ accepted: true, requestId: 'sheet-row' })));
+    vi.stubGlobal('fetch', fetchSpy);
+    render(<LeadForm />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /Обсудить подключение/ }));
+    await screen.findByRole('status');
+    expect(fetchSpy.mock.calls[0][1]).toMatchObject({ headers: { 'Content-Type': 'text/plain;charset=utf-8' }, credentials: 'omit' });
+    expect(JSON.parse(fetchSpy.mock.calls[0][1].body).requestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('reuses the request ID after an uncertain response and changes it for edited data', async () => {
+    const fetchSpy = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchSpy);
+    render(<LeadForm />);
+    fillForm();
+    const submit = () => fireEvent.click(screen.getByRole('button', { name: /Обсудить подключение/ }));
+    submit();
+    await screen.findByRole('alert');
+    submit();
+    await screen.findByRole('alert');
+    const first = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    const second = JSON.parse(fetchSpy.mock.calls[1][1].body);
+    expect(second.requestId).toBe(first.requestId);
+    fireEvent.change(screen.getByLabelText('Город'), { target: { value: 'Астана' } });
+    submit();
+    await screen.findByRole('alert');
+    expect(JSON.parse(fetchSpy.mock.calls[2][1].body).requestId).not.toBe(first.requestId);
+  });
+
+  it('does not show success for a Sheets rate limit response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ accepted: false, code: 'RATE_LIMIT' }))));
+    render(<LeadForm />);
+    fillForm();
+    fireEvent.click(screen.getByRole('button', { name: /Обсудить подключение/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Подождите минуту');
+    expect(screen.queryByText(/Заявка принята/)).not.toBeInTheDocument();
+  });
 });
