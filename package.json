@@ -1,0 +1,11 @@
+{
+  "name": "secureguard-landing-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev -- --host 127.0.0.1 --port 5175",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix frontend test",
+    "preview": "npm --prefix frontend run preview -- --host 127.0.0.1 --port 5175"
+  }
+}
