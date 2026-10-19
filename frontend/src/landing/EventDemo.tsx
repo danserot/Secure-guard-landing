@@ -32,7 +32,7 @@ export function EventDemo({ compact = false }: { compact?: boolean }) {
           <div className="sg-timeline">
             <div className="sg-timeline-label"><span><Clock3 size={12} /> Контекст события</span><span>−10 / +10 сек</span></div>
             <div className="sg-timeline-track"><span className="sg-timeline-event" /><span className="sg-timeline-cursor" style={{ left: `${position * 5}%` }} /></div>
-            <div className="sg-timeline-times"><span>14:32:08</span><span className="sg-orange">14:32:18</span><span>14:32:28</span></div>
+            <div className="sg-timeline-times"><span>14:32:08</span><span className="sg-accent">14:32:18</span><span>14:32:28</span></div>
             {!compact && <label className="sg-scrubber">Выберите время в макете<input aria-label="Время в демонстрационном макете" type="range" min="0" max="20" value={position} onChange={(event) => setPosition(Number(event.target.value))} /><small>Схема временного окна, не реальная видеозапись.</small></label>}
           </div>
         </div>
